@@ -1,16 +1,16 @@
 # A jingle assessment of the Perspective Taking Protocol
 
-Materials, data, and analysis code for a study of the psychometric properties of the McHugh/Barnes-Holmes Perspective Taking Protocol (PTP), assessed against established self-report and behavioural measures of perspective taking, empathy, and theory of mind.
+Materials, data, and analysis code for a study of the psychometric properties of the McHugh/Barnes-Holmes Perspective Taking Protocol (PTP), assessed against established self-report and behavioural measures of perspective taking, empathy, and theory of mind. 
 
-Hussey, I., & Elson, M. (2026). *The RFT Perspective Taking Protocol has very poor reliability and convergent validity with other measures of perspective taking, empathy, and theory of mind: A jingle assessment.*
+Hussey, I., & Elson, M. (2026). *The RFT Perspective Taking Protocol has very poor reliability and convergent validity with other measures of perspective taking, empathy, and theory of mind: A jingle assessment.* https://github.com/ianhussey/jingle-perspective-taking-task
 
 ## The question
 
-The PTP was developed within Relational Frame Theory as a protocol to **assess and train** deictic relational responding in children. It has increasingly been used as a **measure of individual differences** in adults, which presupposes two things that had not been tested: that its scores are reliable, and that they are valid indicators of a perspective-taking trait. This study tests both, and asks whether calling it a perspective-taking measure is a jingle fallacy — the assumption that similarly named measures measure similar things.
+The PTP was developed within Relational Frame Theory as a protocol to assess and train deictic relational responding in children. It has increasingly been used as a measure of individual differences in adults, which presupposes two things that had not been tested: that its scores are reliable, and that they are valid indicators of a perspective-taking trait. This study tests both, and asks whether calling it a perspective-taking measure is a jingle fallacy — the assumption that similarly named measures measure similar things.
 
 134 adults completed a 9-item PTP (3 simple, 4 reversed, 2 double-reversed trials) online alongside a battery of comparison measures; 98 of them provided usable data at both waves, 10 days apart.
 
-**Comparison measures.** Interpersonal Reactivity Index (IRI), Empathy Quotient (EQ, with Lawrence et al. subscales), Pictorial Empathy Test (PET), Single Item Trait Empathy Scale (SITES), Reading the Mind in the Eyes Test (RMET), Perspective-Taking Task for Adults (PTT-A).
+Comparison measures. Interpersonal Reactivity Index (IRI), Empathy Quotient (EQ, with Lawrence et al. subscales), Pictorial Empathy Test (PET), Single Item Trait Empathy Scale (SITES), Reading the Mind in the Eyes Test (RMET), Perspective-Taking Task for Adults (PTT-A).
 
 ## Headline results
 
@@ -54,14 +54,14 @@ reports/        manuscript, preprint, and the associated Bachelor's thesis
 
 `data/processed/data_processed.csv` is one row per participant per timepoint, with item-level responses, scale and subscale scores, completeness flags, and `exclude_master` (participants who failed either embedded attention check). Directly identifying information is not shared and is excluded from this repository via `.gitignore`.
 
-## Known issue with the materials
-
-**Item 7 of the Perspective Taking Protocol was implemented as a single-reversed trial when it should have been double-reversed.** The intended and the administered versions are both documented in `measures/mchughtrials/`. Anyone extending this study should fix this; the analyses here score the item as administered.
-
 ## Provenance
 
 Data collection was conducted as part of Markus Dieterich's Bachelor's thesis at the Faculty of Psychology, Ruhr University Bochum, while both authors were employed there. The thesis is in `reports/thesis/`.
 
 ## Licence
 
-[CC BY 4.0](LICENSE).
+(c) Ian Hussey 2023-2026
+
+All data and text is [CC BY 4.0](LICENSE) licensed.
+
+All code is MIT licensed.

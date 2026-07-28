@@ -417,10 +417,10 @@ make_raincloud <- function(data, scale_name, yvar = "score", ylab = "Score",
   p <- data |>
     filter(scale == scale_name) |>
     ggplot(aes(as.factor(timepoint), .data[[yvar]], fill = as.factor(timepoint))) +
-    geom_rain(alpha = .5, rain.side = 'f1x1', id.long.var = "unique_id", likert = likert,
+    geom_rain(alpha = .4, rain.side = 'f1x1', id.long.var = "unique_id", likert = likert,
               # the data points are drawn at a fixed size rather than one relative to
               # the panel, so they are scaled with the figure like the text is
-              point.args = list(size = 1.5 * fig_rain$scale)) +
+              point.args = list(size = .8 * fig_rain$scale)) +
     # all four raincloud figures are displayed at the full text width and share a
     # design width, so they share a scale factor
     theme_classic(base_size = base_size(fig_rain)) +
