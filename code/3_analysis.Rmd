@@ -1,5 +1,5 @@
 ---
-title: "Perspective taking"
+title: "Analysis of perspective taking data"
 subtitle: "Analyses"
 author: "Ian Hussey"
 date: "`r format(Sys.time(), '%d %B %Y')`"
@@ -11,11 +11,6 @@ output:
     toc: yes
     toc_float: yes
 ---
-
-# TODO
-
-- add distribution plots for all (sub)scales
-- not all subscales in TRT plots
 
 # Overview
 
@@ -47,9 +42,11 @@ library(ggplot2)
 library(patchwork)
 library(ggstance)
 library(ggrain)
+library(ggrepel)
 library(scales)
 library(mirt)
 library(metafor)
+library(strait)
 library(correlation)
 library(see)
 library(insight)
@@ -60,6 +57,76 @@ library(kableExtra)
 options(scipen=999)
 
 dir.create("plots")
+
+# every figure is written twice: a png for embedding, and a vector pdf of the same
+# dimensions for submission. Takes the same arguments as ggsave(), with a .png
+# filename; the pdf is written alongside it. cairo_pdf is used so that any unicode
+# in the labels renders correctly, and dpi (which only applies to the png) is passed
+# through by ggsave to the raster device only
+ggsave_png_pdf <- function(filename, ...){
+  ggsave(filename, ...)
+  ggsave(str_replace(filename, "\\.png$", ".pdf"), ..., device = cairo_pdf)
+}
+
+# manuscript page geometry: A4 with 1 inch margins.
+# NB the .docx is currently US Letter; for that, set page_width 8.5 and page_height 11
+page_width  <- 8.27
+page_height <- 11.69
+page_margin <- 1
+text_width  <- page_width  - 2 * page_margin
+text_height <- page_height - 2 * page_margin
+
+# Each figure is saved at the size at which it is displayed in the manuscript, so that
+# its text is rendered at final size rather than being scaled down by the word
+# processor. fig_size() takes the design dimensions of a layout (the canvas its panels
+# were arranged for) and the fraction of the text area the figure occupies, and returns
+# the display dimensions together with `scale`, the factor by which the design has
+# shrunk. Text and point sizes are multiplied by `scale` so that the figure looks like
+# the full-size design shrunk onto the page, rather than having oversized labels.
+fig_size <- function(design_width, design_height, width = NULL, height = NULL){
+  display_width <- if (!is.null(width)) {
+    width * text_width
+  } else {
+    height * text_height * design_width / design_height
+  }
+  list(width  = display_width,
+       height = display_width * design_height / design_width,
+       scale  = display_width / design_width)
+}
+
+# base font size for a figure saved at `scale` of the size it was designed at
+base_size <- function(fig) 11 * fig$scale
+
+# display size of every figure, as a fraction of the text area
+fig_trt         <- fig_size(6,  5,  width  = 0.8)
+fig_alpha       <- fig_size(6,  5,  width  = 0.8)
+fig_reliability <- fig_size(7,  6,  width  = 0.8)
+fig_rain        <- fig_size(12, 13, width  = 1)     # totals; the subscale panels share its scale
+fig_rain_sub    <- fig_size(12, 16, width  = 1)
+fig_bounds      <- fig_size(12, 13, width  = 1)
+fig_bounds_sub  <- fig_size(12, 16, width  = 1)
+fig_pomp_sd     <- fig_size(8,  9,  width  = 0.8)
+# The correlation matrices use coord_fixed(), so their panels are square and the canvas
+# is not free to take any aspect ratio: it has to fit the square panel plus the room the
+# row labels, legend and margins need beside it (roughly 0.8-1.2 in at these font sizes,
+# measured from the rendered figures). Hence the width is given explicitly rather than
+# derived from a design aspect ratio; too narrow and the square panel shrinks, leaving
+# whitespace above and below it. `scale` still follows the height, so the text sizes are
+# the same as they would be under the rules above.
+fig_cor_hist    <- list(width = 6.12, height = 7.75, scale = 5.81/9)  # histogram + matrix
+fig_cor_single  <- list(width = 6.27, height = 5.61, scale = 6.27/9)  # one matrix alone
+fig_cor_pair    <- list(width = 4.33, height = 7.75, scale = 3.88/9)  # two matrices stacked
+fig_cor_pt      <- list(width = 5.02, height = 4.30, scale = 5.02/7)  # one smaller matrix
+
+# the same rules applied to the figures in the commented-out sections further down, so
+# that they match if they are ever re-enabled: the portrait histogram-plus-matrix
+# layouts are fitted to the text height unless that would overflow the text width
+# (as it does for the 6 x 7 scale-only layouts), and the wider two-column T1 vs T2
+# comparisons are fitted to the text width
+fig_cor_scales     <- fig_size(6,    7, width  = 1)     # histogram + matrix, scales
+fig_cor_subscales  <- fig_size(7,    9, height = 0.8)   # histogram + matrix, subscales
+fig_cor_both       <- fig_size(9.35, 6, width  = 1)     # T1 and T2 side by side
+fig_cor_both_sub   <- fig_size(13.2, 9, width  = 1)
 
 ```
 
@@ -215,7 +282,7 @@ res |>
 
 #### Bar
 
-```{r fig.height=5, fig.width=6}
+```{r fig.height=4.18, fig.width=5.02}
 
 p_trt_scales <- res |>
   filter(str_detect(scale, "SITES") | str_detect(scale, "_total")) |>
@@ -227,7 +294,7 @@ p_trt_scales <- res |>
   scale_x_continuous(breaks = breaks_pretty(n = 10),
                      limits = c(-.2, 1),
                      name = bquote("Test-Retest Reliability" ~ (ICC["2,1"]))) +
-  theme_linedraw() +
+  theme_linedraw(base_size = base_size(fig_trt)) +
   ylab("Scale")
 
 p_trt_subscales <- res |>
@@ -241,23 +308,23 @@ p_trt_subscales <- res |>
   scale_x_continuous(breaks = breaks_pretty(n = 10),
                      limits = c(-.2, 1),
                      name = bquote("Test-Retest Reliability" ~ (ICC["2,1"]))) +
-  theme_linedraw() +
+  theme_linedraw(base_size = base_size(fig_trt)) +
   ylab("Subscale")
 
 p_trt_scales + 
   p_trt_subscales + 
   plot_layout(ncol = 1, heights = c(1, 1.35))
 
-ggsave("plots/trt.png", 
-       width = 6,
-       height = 5,
+ggsave_png_pdf("plots/trt.png",
+       width = fig_trt$width,
+       height = fig_trt$height,
        dpi = 600)
 
 ```
 
 #### Raincloud
 
-```{r fig.height=14, fig.width=12}
+```{r}
 
 round_half_up_trailing <- function(x, digits = 2) {
   x_rounded <- round_half_up(x, digits = digits)
@@ -270,120 +337,281 @@ res_print <- res |>
   select(scale, string)
 
 data_reshaped_plotting <- data_sumscores |>
-  pivot_longer(cols = c(SITES, 
+  pivot_longer(cols = c(SITES,
                         IRI_FS, IRI_EC, IRI_PT, IRI_PD, IRI_total,
-                        EQ_cog, EQ_aff, EQ_soc, EQ_total, 
-                        PET_total, 
-                        RMET_total, 
-                        PTP_sim, PTP_rev, PTP_dbl, PTP_total, 
+                        EQ_cog, EQ_aff, EQ_soc, EQ_total,
+                        PET_total,
+                        RMET_total,
+                        PTP_sim, PTP_rev, PTP_dbl, PTP_total,
                         PTTA_total),
                names_to = "scale",
                values_to = "score")
 
+# theoretical minimum and maximum possible score for each (sub)scale. Used to
+# express scores as POMP (percent of maximum possible): 100 * (x - min) / (max - min),
+# and, together with the scoring structure (whether the score is a single item, a sum
+# of items, or a mean of items, and how many items), to derive the feasible SD bounds
+# in the section below.
+# min/max derived from the item scoring in 2_processing.Rmd:
+#   SITES      single item scored 1-5
+#   IRI_*      7 items each 0-4 (28 items for the total)
+#   EQ_cog     15 items, EQ_aff 12, EQ_soc 8, EQ_total 40, each item 0-2
+#   PET_total  mean of 7 items each 1-5
+#   RMET_total 36 items each 0-1
+#   PTP_sim    3 items, PTP_rev 4, PTP_dbl 2, PTP_total 9, each item 0-1
+#   PTTA_total 32 items each 0-1
+scale_ranges <- tribble(
+  ~scale,       ~score_min, ~score_max, ~scoring,     ~n_items,
+  "SITES",      1,          5,          "singleitem", 1,
+  "IRI_FS",     0,          28,         "sumscored",  7,
+  "IRI_EC",     0,          28,         "sumscored",  7,
+  "IRI_PT",     0,          28,         "sumscored",  7,
+  "IRI_PD",     0,          28,         "sumscored",  7,
+  "IRI_total",  0,          112,        "sumscored",  28,
+  "EQ_cog",     0,          30,         "sumscored",  15,
+  "EQ_aff",     0,          24,         "sumscored",  12,
+  "EQ_soc",     0,          16,         "sumscored",  8,
+  "EQ_total",   0,          80,         "sumscored",  40,
+  "PET_total",  1,          5,          "meanscored", 7,
+  "RMET_total", 0,          36,         "sumscored",  36,
+  "PTP_sim",    0,          3,          "sumscored",  3,
+  "PTP_rev",    0,          4,          "sumscored",  4,
+  "PTP_dbl",    0,          2,          "sumscored",  2,
+  "PTP_total",  0,          9,          "sumscored",  9,
+  "PTTA_total", 0,          32,         "sumscored",  32
+)
 
-p_trt_1 <- data_reshaped_plotting |>
-  filter(scale == "IRI_total") |>
-  ggplot(aes(as.factor(timepoint), score, fill = as.factor(timepoint))) +
-  geom_rain(alpha = .5, rain.side = 'f1x1', id.long.var = "unique_id") +
-  theme_classic() +
-  scale_fill_manual(values=c("dodgerblue", "darkorange")) +
-  guides(fill = 'none', color = 'none') +
-  ylab("Score") +
-  xlab("Time point") +
-  ggtitle(bquote("Interpersonal Reactivity Index:" ~ ICC["2,1"] ~ .(res_print |> filter(scale == "IRI_total") |> pull(string)))) +
-  scale_y_continuous(breaks = scales::breaks_pretty(n = 6))
+data_reshaped_plotting_pomp <- data_reshaped_plotting |>
+  left_join(scale_ranges, by = "scale") |>
+  mutate(pomp = 100 * (score - score_min) / (score_max - score_min))
 
-p_trt_2 <- data_reshaped_plotting |>
-  filter(scale == "IRI_PT") |>
-  ggplot(aes(as.factor(timepoint), score, fill = as.factor(timepoint))) +
-  geom_rain(alpha = .5, rain.side = 'f1x1', id.long.var = "unique_id") +
-  theme_classic() +
-  scale_fill_manual(values=c("dodgerblue", "darkorange")) +
-  guides(fill = 'none', color = 'none') +
-  ylab("Score") +
-  xlab("Time point") +
-  ggtitle(bquote("IRI - Perspective Taking Subscale:" ~ ICC["2,1"] ~ .(res_print |> filter(scale == "IRI_PT") |> pull(string)))) +
-  scale_y_continuous(breaks = scales::breaks_pretty(n = 6))
+# display titles for each (sub)scale
+scale_titles <- c(
+  SITES      = "Single Item Trait Empathy Scale",
+  IRI_total  = "Interpersonal Reactivity Index",
+  IRI_FS     = "IRI - Fantasy Subscale",
+  IRI_EC     = "IRI - Empathic Concern Subscale",
+  IRI_PT     = "IRI - Perspective Taking Subscale",
+  IRI_PD     = "IRI - Personal Distress Subscale",
+  EQ_total   = "Emotional Quotient",
+  EQ_cog     = "EQ - Cognitive Empathy Subscale",
+  EQ_aff     = "EQ - Affective Empathy Subscale",
+  EQ_soc     = "EQ - Social Skills Subscale",
+  PET_total  = "Pictoral Empathy Test",
+  RMET_total = "Reading the Mind in the Eyes Test",
+  PTP_total  = "Perspective Taking Protocol",
+  PTP_sim    = "PTP - Simple Subscale",
+  PTP_rev    = "PTP - Reversed Subscale",
+  PTP_dbl    = "PTP - Double-Reversed Subscale",
+  PTTA_total = "Perspective Taking Task for Adults"
+)
 
-p_trt_3 <- data_reshaped_plotting |>
-  filter(scale == "SITES") |>
-  ggplot(aes(as.factor(timepoint), score, fill = as.factor(timepoint))) +
-  geom_rain(alpha = .5, rain.side = 'f1x1', id.long.var = "unique_id", likert = TRUE) +
-  theme_classic() +
-  scale_fill_manual(values=c("dodgerblue", "darkorange")) +
-  guides(fill = 'none', color = 'none') +
-  ylab("Score") +
-  xlab("Time point") +
-  ggtitle(bquote("Single Item Trait Empathy Scale:" ~ ICC["2,1"] ~ .(res_print |> filter(scale == "SITES") |> pull(string)))) +
-  scale_y_continuous(breaks = scales::breaks_pretty(n = 6))
+# (sub)scales scored as small discrete counts, plotted with geom_rain's likert jitter
+likert_scales <- c("SITES", "PTP_total", "PTP_sim", "PTP_rev", "PTP_dbl")
 
-p_trt_4 <- data_reshaped_plotting |>
-  filter(scale == "PET_total") |>
-  ggplot(aes(as.factor(timepoint), score, fill = as.factor(timepoint))) +
-  geom_rain(alpha = .5, rain.side = 'f1x1', id.long.var = "unique_id") +
-  theme_classic() +
-  scale_fill_manual(values=c("dodgerblue", "darkorange")) +
-  guides(fill = 'none', color = 'none') +
-  ylab("Score") +
-  xlab("Time point") +
-  ggtitle(bquote("Pictoral Empathy Test:" ~ ICC["2,1"] ~ .(res_print |> filter(scale == "PET_total") |> pull(string)))) +
-  scale_y_continuous(breaks = scales::breaks_pretty(n = 6))
+# helper to build a within-subject raincloud panel for one (sub)scale.
+# yvar/ylab switch between raw scores and POMP; ylim (via coord_cartesian) gives
+# the POMP plots a common 0-100 axis so proportionate variance is comparable.
+make_raincloud <- function(data, scale_name, yvar = "score", ylab = "Score",
+                           likert = FALSE, ylim = NULL) {
+  p <- data |>
+    filter(scale == scale_name) |>
+    ggplot(aes(as.factor(timepoint), .data[[yvar]], fill = as.factor(timepoint))) +
+    geom_rain(alpha = .5, rain.side = 'f1x1', id.long.var = "unique_id", likert = likert,
+              # the data points are drawn at a fixed size rather than one relative to
+              # the panel, so they are scaled with the figure like the text is
+              point.args = list(size = 1.5 * fig_rain$scale)) +
+    # all four raincloud figures are displayed at the full text width and share a
+    # design width, so they share a scale factor
+    theme_classic(base_size = base_size(fig_rain)) +
+    scale_fill_manual(values = c("dodgerblue", "darkorange")) +
+    guides(fill = 'none', color = 'none') +
+    ylab(ylab) +
+    xlab("Time point") +
+    ggtitle(bquote(.(scale_titles[[scale_name]]) * ":" ~ ICC["2,1"] ~
+                     .(res_print |> filter(scale == scale_name) |> pull(string)))) +
+    scale_y_continuous(breaks = scales::breaks_pretty(n = 6))
+  if (!is.null(ylim)) p <- p + coord_cartesian(ylim = ylim)
+  p
+}
 
-p_trt_5 <- data_reshaped_plotting |>
-  filter(scale == "EQ_total") |>
-  ggplot(aes(as.factor(timepoint), score, fill = as.factor(timepoint))) +
-  geom_rain(alpha = .5, rain.side = 'f1x1', id.long.var = "unique_id") +
-  theme_classic() +
-  scale_fill_manual(values=c("dodgerblue", "darkorange")) +
-  guides(fill = 'none', color = 'none') +
-  ylab("Score") +
-  xlab("Time point") +
-  ggtitle(bquote("Emotional Quotient:" ~ ICC["2,1"] ~ .(res_print |> filter(scale == "EQ_total") |> pull(string)))) +
-  scale_y_continuous(breaks = scales::breaks_pretty(n = 6))
-
-p_trt_6 <- data_reshaped_plotting |>
-  filter(scale == "RMET_total") |>
-  ggplot(aes(as.factor(timepoint), score, fill = as.factor(timepoint))) +
-  geom_rain(alpha = .5, rain.side = 'f1x1', id.long.var = "unique_id") +
-  theme_classic() +
-  scale_fill_manual(values=c("dodgerblue", "darkorange")) +
-  guides(fill = 'none', color = 'none') +
-  ylab("Score") +
-  xlab("Time point") +
-  ggtitle(bquote("Reading the Mind in the Eyes Test:" ~ ICC["2,1"] ~ .(res_print |> filter(scale == "RMET_total") |> pull(string)))) +
-  scale_y_continuous(breaks = scales::breaks_pretty(n = 6))
-
-p_trt_7 <- data_reshaped_plotting |>
-  filter(scale == "PTP_total") |>
-  ggplot(aes(as.factor(timepoint), score, fill = as.factor(timepoint))) +
-  geom_rain(alpha = .5, rain.side = 'f1x1', id.long.var = "unique_id", likert = TRUE) +
-  theme_classic() +
-  scale_fill_manual(values=c("dodgerblue", "darkorange")) +
-  guides(fill = 'none', color = 'none') +
-  ylab("Score") +
-  xlab("Time point") +
-  ggtitle(bquote("Perspective Taking Protocol:" ~ ICC["2,1"] ~ .(res_print |> filter(scale == "PTP_total") |> pull(string)))) +
-  scale_y_continuous(breaks = scales::breaks_pretty(n = 6))
-
-p_trt_8 <- data_reshaped_plotting |>
-  filter(scale == "PTTA_total") |>
-  ggplot(aes(as.factor(timepoint), score, fill = as.factor(timepoint))) +
-  geom_rain(alpha = .5, rain.side = 'f1x1', id.long.var = "unique_id") +
-  theme_classic() +
-  scale_fill_manual(values=c("dodgerblue", "darkorange")) +
-  guides(fill = 'none', color = 'none') +
-  ylab("Score") +
-  xlab("Time point") +
-  ggtitle(bquote("Perspective Taking Task for Adults:" ~ ICC["2,1"] ~ .(res_print |> filter(scale == "PTTA_total") |> pull(string)))) +
-  scale_y_continuous(breaks = scales::breaks_pretty(n = 6))
-
-p_trt_1 + p_trt_2 + p_trt_3 + p_trt_4 +
-  p_trt_5 + p_trt_6 + p_trt_7 + p_trt_8 +
-  plot_layout(ncol = 2)
+# total scores (IRI perspective-taking subscale moved to the subscales plot below)
+scales_totals    <- c("IRI_total", "SITES", "PET_total", "EQ_total",
+                      "RMET_total", "PTP_total", "PTTA_total")
+# subscales of the multi-facet measures
+scales_subscales <- c("IRI_FS", "IRI_EC", "IRI_PT", "IRI_PD",
+                      "EQ_cog", "EQ_aff", "EQ_soc",
+                      "PTP_sim", "PTP_rev", "PTP_dbl")
 
 ```
 
-## Internal consistency 
+Total scores:
+
+```{r fig.height=6.79, fig.width=6.27}
+
+wrap_plots(
+  map(scales_totals,
+      ~ make_raincloud(data_reshaped_plotting, .x, likert = .x %in% likert_scales)),
+  ncol = 2
+)
+
+ggsave_png_pdf("plots/raincloud_totals.png", width = fig_rain$width, height = fig_rain$height, dpi = 600)
+
+```
+
+Subscales:
+
+```{r fig.height=8.36, fig.width=6.27}
+
+wrap_plots(
+  map(scales_subscales,
+      ~ make_raincloud(data_reshaped_plotting, .x, likert = .x %in% likert_scales)),
+  ncol = 2
+)
+
+ggsave_png_pdf("plots/raincloud_subscales.png", width = fig_rain_sub$width, height = fig_rain_sub$height, dpi = 600)
+
+```
+
+Total scores, converted to POMP (percent of maximum possible) so proportionate variance is comparable across measures:
+
+```{r fig.height=6.79, fig.width=6.27}
+
+wrap_plots(
+  map(scales_totals,
+      ~ make_raincloud(data_reshaped_plotting_pomp, .x,
+                       yvar = "pomp", ylab = "POMP (%)", ylim = c(0, 100))),
+  ncol = 2
+)
+
+ggsave_png_pdf("plots/raincloud_totals_pomp.png", width = fig_rain$width, height = fig_rain$height, dpi = 600)
+
+```
+
+Subscales, converted to POMP:
+
+```{r fig.height=8.36, fig.width=6.27}
+
+wrap_plots(
+  map(scales_subscales,
+      ~ make_raincloud(data_reshaped_plotting_pomp, .x,
+                       yvar = "pomp", ylab = "POMP (%)", ylim = c(0, 100))),
+  ncol = 2
+)
+
+ggsave_png_pdf("plots/raincloud_subscales_pomp.png", width = fig_rain_sub$width, height = fig_rain_sub$height, dpi = 600)
+
+```
+
+#### Mean and SD against the feasible SD bounds
+
+On a bounded scale the mean constrains the SD, so the two are not independent: a (sub)scale whose mean sits close to a limit cannot show much dispersion. The `strait` package computes, in closed form, the smallest and largest sample SD consistent with a given mean, sample size, scale range and scoring structure. The bounds used here are the *sharp quasi-integer* ones: sharp in that they are attained rather than merely not exceeded (unlike the Bhatia-Davis / Popoviciu-type inequalities used previously, which ignore both the finite sample size and the granularity of the responses), and quasi-integer in that they respect the fact that item responses, and therefore sum scores, fall on an integer grid, while remaining defined at every mean rather than only at the GRIM-consistent ones.
+
+The umbrella plots below show, for each (sub)scale, the feasible region of (mean, SD) pairs at Time 1 with the observed mean and SD overlaid; the shaded area is what the scale's structure rules out. The ceiling is the dome and the scalloped line along the bottom is the floor, whose cusps fall at the means an integer sum can hit exactly.
+
+```{r}
+
+# observed summary statistics for each (sub)scale in the Time 1 analytic sample,
+# rounded to 2 decimals, i.e., the precision at which they would be reported
+sd_bounds_dat <- data_reshaped_plotting |>
+  filter(timepoint == 1) |>
+  group_by(scale) |>
+  summarise(n    = sum(!is.na(score)),
+            mean = round_half_up(mean(score, na.rm = TRUE), digits = 2),
+            sd   = round_half_up(sd(score,   na.rm = TRUE), digits = 2),
+            .groups = "drop") |>
+  left_join(scale_ranges, by = "scale") |>
+  rename(l = score_min, u = score_max)
+
+# BRIMMER: the sharp quasi-integer floor and ceiling for the SD given the mean, the
+# scale limits, n and the scoring structure, plus the POMP transforms of both. Also
+# returns a consistency verdict, which for data computed from the raw responses (as
+# opposed to values transcribed from a paper) is expected to be TRUE throughout
+sd_bounds_res <- sd_bounds_dat |>
+  brimmer_multiple(Z = "quasiinteger", mean_digits = 2, sd_digits = 2) |>
+  mutate(type  = if_else(str_detect(scale, "_total$") | scale == "SITES",
+                         "Scale", "Subscale"),
+         label = str_replace(str_remove(scale, "_total"), "_", " "))
+
+sd_bounds_res |>
+  select(scale, n, l, u, scoring, n_items, mean, sd, min_sd, max_sd,
+         pomp_mean, pomp_sd_sharp, consistent) |>
+  mutate(across(where(is.numeric), ~ round_half_up(.x, digits = 2))) |>
+  kable(align = "r") |>
+  kable_classic(full_width = FALSE)
+
+# one bounds curve per (sub)scale: the curves differ because l, u, n and the scoring
+# structure differ
+sd_bounds_curves <- sd_bounds_res |>
+  split(~ scale) |>
+  map(~ sd_bounds_curve(l = .x$l, u = .x$u, n = .x$n, Z = "quasiinteger",
+                        scoring = .x$scoring, n_items = .x$n_items))
+
+make_umbrella <- function(scale_name){
+  plot_sd_bounds(sd_bounds_curves[[scale_name]],
+                 points = sd_bounds_res |> filter(scale == scale_name),
+                 title  = scale_titles[[scale_name]]) +
+    # plot_sd_bounds() leaves the default theme in place, so its base size is set here
+    # for the size the figure is displayed at (both panels share a design width)
+    theme_grey(base_size = base_size(fig_bounds))
+}
+
+```
+
+Total scores:
+
+```{r fig.height=6.79, fig.width=6.27}
+
+wrap_plots(map(scales_totals, make_umbrella), ncol = 2, guides = "collect") &
+  theme(legend.position = "bottom")
+
+ggsave_png_pdf("plots/sd_bounds_totals.png", width = fig_bounds$width, height = fig_bounds$height, dpi = 600)
+
+```
+
+Subscales:
+
+```{r fig.height=8.36, fig.width=6.27}
+
+wrap_plots(map(scales_subscales, make_umbrella), ncol = 2, guides = "collect") &
+  theme(legend.position = "bottom")
+
+ggsave_png_pdf("plots/sd_bounds_subscales.png", width = fig_bounds_sub$width, height = fig_bounds_sub$height, dpi = 600)
+
+```
+
+The umbrella is a different shape for every (sub)scale, so the raw SDs are not comparable across measures. The plot below puts them on a common footing by using the bounds themselves as the denominator: each (sub)scale's SD is expressed as its position within its own sharp band (0 = the floor, 1 = the ceiling), against its POMP mean. This replaces the previous Bhatia-Davis proportion, and answers the same question - how much of the dispersion available to it, given where its mean sits, does each measure actually use - but against a bound that is attainable rather than merely arithmetic. The feasible region is by construction the unit square; shaded regions are infeasible.
+
+```{r fig.height=5.64, fig.width=5.02}
+
+# with reference = "sharp" each point is normalised by its own bounds, so the curve
+# argument is unused (it is only drawn for reference = "parity") but is still required
+make_pomp_bounds_plot <- function(type_name){
+  points <- sd_bounds_res |> filter(type == type_name)
+
+  plot_sd_bounds_pomp(sd_bounds_curves[[1]],
+                      points = points,
+                      reference = "sharp",
+                      title = paste0(type_name, "s")) +
+    ggrepel::geom_text_repel(data = points,
+                             aes(pomp_mean, pomp_sd_sharp, label = label),
+                             size = 3 * fig_pomp_sd$scale,
+                             max.overlaps = Inf, min.segment.length = 0) +
+    # plot_sd_bounds_pomp() applies theme_minimal(); reapplied here at the size the
+    # figure is displayed at
+    theme_minimal(base_size = base_size(fig_pomp_sd))
+}
+
+make_pomp_bounds_plot("Scale") +
+  make_pomp_bounds_plot("Subscale") +
+  plot_layout(ncol = 1, guides = "collect") &
+  theme(legend.position = "bottom")
+
+ggsave_png_pdf("plots/pomp_mean_vs_sharp_sd_bound.png", width = fig_pomp_sd$width, height = fig_pomp_sd$height, dpi = 600)
+
+```
+
+## Internal consistency
 
 Cronbach's $\alpha$
 
@@ -479,7 +707,7 @@ res |>
 
 #### Bar
 
-```{r fig.height=5, fig.width=6}
+```{r fig.height=4.18, fig.width=5.02}
 
 p_alpha_scales <- res |>
   filter(str_ends(scale, "_")) |>
@@ -491,7 +719,7 @@ p_alpha_scales <- res |>
   scale_x_continuous(breaks = breaks_pretty(n = 10),
                      limits = c(-.2, 1),
                      name = bquote("Internal Consistency" ~ (alpha))) +
-  theme_linedraw() +
+  theme_linedraw(base_size = base_size(fig_alpha)) +
   ylab("Scale")
 
 p_alpha_subscales <- res |>
@@ -504,23 +732,23 @@ p_alpha_subscales <- res |>
   scale_x_continuous(breaks = breaks_pretty(n = 10),
                      limits = c(-.2, 1),
                      name = bquote("Internal Consistency" ~ (alpha))) +
-  theme_linedraw() +
+  theme_linedraw(base_size = base_size(fig_alpha)) +
   ylab("Subscale")
 
 p_alpha_scales +
   p_alpha_subscales +
   plot_layout(ncol = 1, heights = c(1, 1.35))
 
-ggsave("plots/internal_consistency.png",
-       width = 6,
-       height = 5,
+ggsave_png_pdf("plots/internal_consistency.png",
+       width = fig_alpha$width,
+       height = fig_alpha$height,
        dpi = 600)
 
 ```
 
 #### Combined
 
-```{r fig.height=6, fig.width=7}
+```{r fig.height=4.3, fig.width=5.02}
 
 # harmonise (sub)scale labels across the two reliability tables: the ICC table
 # names full scales "PTP_total" etc. while the alpha table names them "PTP_";
@@ -554,7 +782,7 @@ plot_reliability_combined <- function(data, ylab){
                         values = c(icc = "dodgerblue", alpha = "darkorange"),
                         labels = c(expression("Test-Retest Reliability" ~ (ICC["2,1"])),
                                    expression("Internal Consistency" ~ (alpha)))) +
-    theme_linedraw() +
+    theme_linedraw(base_size = base_size(fig_reliability)) +
     ylab(ylab)
 }
 
@@ -563,9 +791,9 @@ plot_reliability_combined(filter(reliability_combined, type == "Scale"), "Scale"
   plot_layout(ncol = 1, heights = c(1, 1.35), guides = "collect") &
   theme(legend.position = "bottom")
 
-ggsave("plots/reliability_combined.png",
-       width = 7,
-       height = 6,
+ggsave_png_pdf("plots/reliability_combined.png",
+       width = fig_reliability$width,
+       height = fig_reliability$height,
        dpi = 600)
 
 ```
@@ -606,7 +834,7 @@ p_hist_t1 <-
                      breaks = scales::breaks_pretty(n = 10)) + 
   scale_y_continuous(name = "Frequency", 
                      breaks = scales::breaks_pretty(n = 7)) + 
-  theme_linedraw() +
+  theme_linedraw(base_size = base_size(fig_cor_hist)) +
   theme(panel.grid.minor.y = element_blank()) +
   facet_wrap(~ includes_ptp, ncol = 1)
 
@@ -623,19 +851,52 @@ measure_order <- c("PTP_total", "PTP_sim", "PTP_rev", "PTP_dbl",
                    "RMET_total",
                    "SITES")
 
+# helper to blank out the redundant half of a correlation matrix produced by
+# summary(..., redundant = TRUE), so that each correlation is displayed only once.
+# summary(redundant = FALSE) also drops the redundant half, but reverses the column
+# order in doing so, which breaks the intended measure_order layout of the matrix
+keep_triangle <- function(cormatrix, which = "lower"){
+  measures <- cormatrix$Parameter
+  for (i in seq_along(measures)) {
+    for (j in seq_along(measures)) {
+      redundant_cell <- if (which == "lower") j >= i else j <= i
+      if (redundant_cell) cormatrix[i, measures[j]] <- NA_real_
+    }
+  }
+  cormatrix
+}
+
+# draw a correlation matrix at the size it is displayed at in the manuscript. The
+# see/correlation defaults (geom_text size 3.88, point size range 5-15, theme base size
+# 11) are tuned for a much larger canvas, so all three are multiplied by the figure's
+# scale factor: the result is what the full-size matrix looks like shrunk onto the page,
+# rather than a small panel with oversized labels and overlapping points
+plot_cormatrix <- function(cormatrix, fig, title = ""){
+  cormatrix |>
+    plot(show_data = "points",
+         stars = FALSE,
+         text  = list(size = 3.88 * fig$scale),
+         scale = list(range = c(5, 15) * fig$scale)) +
+    theme_linedraw(base_size = base_size(fig)) +
+    # the cells of a correlation matrix are meaningless as rectangles: one unit on the
+    # x axis is one unit on the y axis, so the panel is square
+    coord_fixed(ratio = 1) +
+    ggtitle(title)
+}
+
 # code repeated in order to use the rename, which screws up the table but is needed for the plot
-p_mat_t1 <- data_sumscores |>
+cormat_t1 <- data_sumscores |>
   filter(timepoint == 1) |>
   select(all_of(measure_order)) |>
   rename_with(~ str_remove(.x, "_total")) |>
   rename_with(~ str_replace(.x, "_", "\n")) |>
   correlation() %>%
-  mutate(across(where(is.numeric), ~ round_half_up(., 2))) |>
-  summary(redundant = TRUE) |>
-  plot(show_data = "points",
-       stars = FALSE) +
-  theme_linedraw() +
-  ggtitle("")
+  #mutate(across(where(is.numeric), ~ round_half_up(., 2))) |>
+  summary(redundant = TRUE)
+
+# the same matrix with the redundant upper triangle (and the diagonal) omitted. Both
+# are drawn where they are used, since each figure displays them at a different size
+cormat_t1_triangle <- keep_triangle(cormat_t1, "lower")
 
 #p0 + coord_fixed(ratio = 1)
 
@@ -662,18 +923,122 @@ average_cors_all |>
 
 ```
 
-```{r fig.height=12, fig.width=9}
+```{r fig.height=7.75, fig.width=6.12}
 
 p_hist_t1 + ggtitle("Correlation histogram") +
-  p_mat_t1 + ggtitle("Correlation matrix") + 
+  plot_cormatrix(cormat_t1, fig_cor_hist, "Correlation matrix") +
   plot_layout(ncol = 1, heights = c(.4, 1))
 
-ggsave("plots/cor_all_t1.png",
-       width = 9,
-       height = 12,
+ggsave_png_pdf("plots/cor_all_t1.png",
+       width = fig_cor_hist$width,
+       height = fig_cor_hist$height,
        dpi = 600)
 
 ```
+
+The same matrix with only the lower triangle printed, i.e., each correlation shown once rather than twice.
+
+```{r fig.height=5.61, fig.width=6.27}
+
+plot_cormatrix(cormat_t1_triangle, fig_cor_single, "Correlation matrix")
+
+ggsave_png_pdf("plots/cor_all_t1_triangle.png",
+       width = fig_cor_single$width,
+       height = fig_cor_single$height,
+       dpi = 600)
+
+```
+
+##### Spearman's rho robustness test
+
+The correlations above are Pearson's *r*. Several of the (sub)scales are bounded, coarse, and skewed (e.g., the PTP subscales are counts of 2-4 binary items), so the analyses are repeated with Spearman's rho, which is sensitive only to monotonic association and is robust to the non-normality and to outliers.
+
+```{r fig.height=4.5}
+
+all_cors_spearman <- data_sumscores |>
+  filter(timepoint == 1) %>%
+  select(-timepoint, -unique_id) %>%
+  select(order(colnames(.))) |>
+  correlation(method = "spearman")
+
+res_spearman <- all_cors_spearman |>
+  as.data.frame() |>
+  select(Parameter1, Parameter2, rho, ci_low = CI_low, ci_high = CI_high, p) |>
+  mutate(includes_ptp = if_else(str_detect(Parameter1, "PTP_") | str_detect(Parameter2, "PTP_"), "Correlation between PTP and other measures", "Correlation between all other measures"),
+         includes_ptp = if_else(str_detect(Parameter1, "PTP_") & str_detect(Parameter2, "PTP_"), "PTP-self", includes_ptp))
+
+res_spearman |>
+  mutate(p = insight::format_p(p)) |>
+  mutate(across(where(is.numeric), ~ round_half_up(.x, digits = 2))) |>
+  kable(align = "r") |>
+  kable_classic(full_width = FALSE)
+
+p_hist_spearman_t1 <-
+  res_spearman |>
+  filter(includes_ptp != "PTP-self") |>
+  ggplot(aes(rho)) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  geom_histogram(binwidth = 0.1, boundary = 0) +
+  scale_x_continuous(limits = c(-1, 1),
+                     name = "Correlation (Spearman's rho)",
+                     breaks = scales::breaks_pretty(n = 10)) +
+  scale_y_continuous(name = "Frequency",
+                     breaks = scales::breaks_pretty(n = 7)) +
+  theme_linedraw(base_size = base_size(fig_cor_hist)) +
+  theme(panel.grid.minor.y = element_blank()) +
+  facet_wrap(~ includes_ptp, ncol = 1)
+
+# code repeated in order to use the rename, which screws up the table but is needed for the plot
+cormat_spearman_t1_triangle <- data_sumscores |>
+  filter(timepoint == 1) |>
+  select(all_of(measure_order)) |>
+  rename_with(~ str_remove(.x, "_total")) |>
+  rename_with(~ str_replace(.x, "_", "\n")) |>
+  correlation(method = "spearman") |>
+  summary(redundant = TRUE) |>
+  keep_triangle("lower")
+
+average_cors_all_spearman <- res_spearman |>
+  dplyr::summarize(mean_rho = mean(rho),
+                   sd_rho = sd(rho),
+                   median_rho = median(rho),
+                   mad_rho = mad(rho),
+                   min_rho = min(rho),
+                   max_rho = max(rho))
+
+average_cors_all_spearman |>
+  round_half_up(digits = 2) |>
+  kable() |>
+  kable_classic(full_width = FALSE)
+
+# agreement between the two sets of coefficients across all pairs of (sub)scales
+res |>
+  select(Parameter1, Parameter2, r) |>
+  left_join(res_spearman |> select(Parameter1, Parameter2, rho),
+            by = c("Parameter1", "Parameter2")) |>
+  dplyr::summarize(`correlation between r and rho` = cor(r, rho),
+                   `mean |r - rho|` = mean(abs(r - rho)),
+                   `max |r - rho|` = max(abs(r - rho))) |>
+  round_half_up(digits = 2) |>
+  kable() |>
+  kable_classic(full_width = FALSE)
+
+```
+
+```{r fig.height=7.75, fig.width=6.12}
+
+p_hist_spearman_t1 + ggtitle("Correlation histogram (Spearman's rho)") +
+  plot_cormatrix(cormat_spearman_t1_triangle, fig_cor_hist, "Correlation matrix (Spearman's rho)") +
+  plot_layout(ncol = 1, heights = c(.4, 1))
+
+ggsave_png_pdf("plots/cor_all_t1_spearman.png",
+       width = fig_cor_hist$width,
+       height = fig_cor_hist$height,
+       dpi = 600)
+
+```
+
+The Spearman coefficients are near-identical to the Pearson ones (see the agreement table above), and the pattern of results is unchanged: the correlations involving the PTP remain close to zero while those among the other measures remain moderate to large. The conclusions are therefore not an artefact of the distributional properties of the (sub)scales.
 
 #### Both scales and subscales - disattenuated for test-retest reliability
 
@@ -705,7 +1070,7 @@ res_disattenuated |>
 
 ```
 
-```{r fig.height=12, fig.width=9}
+```{r fig.height=7.75, fig.width=4.33}
 
 # ICC[2,1] lookup keyed by the SAME renamed labels used on the plot axes,
 # so it can be matched against the correlation object's Parameter1/Parameter2
@@ -714,7 +1079,7 @@ icc_renamed <- icc_2_1_results |>
          scale = str_replace(scale, "_", "\n")) |>
   select(scale, icc = icc_2.1)
 
-p_mat_disattenuated_t1 <- data_sumscores |>
+cormat_disattenuated_t1 <- data_sumscores |>
   filter(timepoint == 1) |>
   select(all_of(measure_order)) |>
   rename_with(~ str_remove(.x, "_total")) |>
@@ -727,23 +1092,96 @@ p_mat_disattenuated_t1 <- data_sumscores |>
   mutate(r = r / sqrt(icc_renamed$icc[match(Parameter1, icc_renamed$scale)] *
                       icc_renamed$icc[match(Parameter2, icc_renamed$scale)]),
          r = pmax(pmin(r, 1), -1)) |>
-  mutate(across(where(is.numeric), ~ round_half_up(., 2))) |>
-  summary(redundant = TRUE) |>
-  plot(show_data = "points",
-       stars = FALSE) +
-  theme_linedraw() +
-  ggtitle("Disattenuated for test-retest reliability")
+  #mutate(across(where(is.numeric), ~ round_half_up(., 2))) |>
+  summary(redundant = TRUE)
 
-p_mat_t1 + ggtitle("Observed correlations") +
-  p_mat_disattenuated_t1 +
+# same matrix with the redundant upper triangle (and the diagonal) omitted
+cormat_disattenuated_t1_triangle <- keep_triangle(cormat_disattenuated_t1, "lower")
+
+# these figures stack two matrices, so each is displayed at half the height and a
+# third of the width of the single-matrix figures above, and is drawn accordingly
+plot_cormatrix(cormat_t1, fig_cor_pair, "Observed correlations") +
+  plot_cormatrix(cormat_disattenuated_t1, fig_cor_pair,
+                 "Disattenuated for test-retest reliability") +
   plot_layout(ncol = 1)
 
-ggsave("plots/cor_all_disattenuated_t1.png",
-       width = 9,
-       height = 18,
+ggsave_png_pdf("plots/cor_all_disattenuated_t1.png",
+       width = fig_cor_pair$width,
+       height = fig_cor_pair$height,
        dpi = 600)
 
 ```
+
+The same two matrices with only the lower triangle printed, i.e., each correlation shown once rather than twice.
+
+```{r fig.height=7.75, fig.width=4.33}
+
+plot_cormatrix(cormat_t1_triangle, fig_cor_pair, "Observed correlations") +
+  plot_cormatrix(cormat_disattenuated_t1_triangle, fig_cor_pair,
+                 "Disattenuated for test-retest reliability") +
+  plot_layout(ncol = 1)
+
+ggsave_png_pdf("plots/cor_all_disattenuated_t1_triangle.png",
+       width = fig_cor_pair$width,
+       height = fig_cor_pair$height,
+       dpi = 600)
+
+```
+
+##### Spearman's rho robustness test
+
+The disattenuation is repeated using Spearman's rho in place of Pearson's *r*. Note that this is an approximation: the correction assumes the reliability coefficient and the correlation are on the same (product-moment) footing, whereas the ICC[2,1] used here is a product-moment-type coefficient while rho is rank-based. It is reported as a robustness check on the disattenuated pattern, not as an exact estimate.
+
+```{r}
+
+res_spearman_disattenuated <- all_cors_spearman |>
+  as.data.frame() |>
+  select(Parameter1, Parameter2, rho) |>
+  # attach the ICC[2,1] of each measure in the pair
+  left_join(icc_lookup, by = c("Parameter1" = "scale")) |>
+  rename(icc_1 = icc) |>
+  left_join(icc_lookup, by = c("Parameter2" = "scale")) |>
+  rename(icc_2 = icc) |>
+  # correct for attenuation
+  mutate(rho_disattenuated = rho / sqrt(icc_1 * icc_2))
+
+res_spearman_disattenuated |>
+  mutate(across(where(is.numeric), ~ round_half_up(.x, digits = 2))) |>
+  kable(align = "r") |>
+  kable_classic(full_width = FALSE)
+
+```
+
+```{r fig.height=7.75, fig.width=4.33}
+
+# as above, the exact (unclamped) values are in the table; the matrix clamps them
+# to [-1, 1] purely for display
+cormat_spearman_disattenuated_t1_triangle <- data_sumscores |>
+  filter(timepoint == 1) |>
+  select(all_of(measure_order)) |>
+  rename_with(~ str_remove(.x, "_total")) |>
+  rename_with(~ str_replace(.x, "_", "\n")) |>
+  correlation(method = "spearman") %>%
+  mutate(rho = rho / sqrt(icc_renamed$icc[match(Parameter1, icc_renamed$scale)] *
+                          icc_renamed$icc[match(Parameter2, icc_renamed$scale)]),
+         rho = pmax(pmin(rho, 1), -1)) |>
+  summary(redundant = TRUE) |>
+  keep_triangle("lower")
+
+plot_cormatrix(cormat_spearman_t1_triangle, fig_cor_pair,
+               "Observed correlations (Spearman's rho)") +
+  plot_cormatrix(cormat_spearman_disattenuated_t1_triangle, fig_cor_pair,
+                 "Disattenuated for test-retest reliability (Spearman's rho)") +
+  plot_layout(ncol = 1)
+
+ggsave_png_pdf("plots/cor_all_disattenuated_t1_spearman.png",
+       width = fig_cor_pair$width,
+       height = fig_cor_pair$height,
+       dpi = 600)
+
+```
+
+As with the observed correlations, using Spearman's rho leaves the disattenuated pattern unchanged. The same instability applies here: because the PTP's test-retest reliability is near zero, correcting by it inflates the magnitude of its correlations erratically (several exceed |1| before clamping, and their signs are unstable across the PTP subscales), which reflects division by a near-zero denominator rather than a recovered common signal with the other measures.
 
 #### Moderator meta-analysis: PTP vs non-PTP correlations
 
@@ -905,7 +1343,7 @@ Excluding the RMET, if anything, sharpens the contrast: the non-PTP measures coh
 <!--                      breaks = scales::breaks_pretty(n = 10)) +  -->
 <!--   scale_y_continuous(name = "Frequency",  -->
 <!--                      breaks = scales::breaks_pretty(n = 7)) +  -->
-<!--   theme_linedraw() + -->
+<!--   theme_linedraw(base_size = base_size(fig_cor_scales)) + -->
 <!--   theme(panel.grid.minor.y = element_blank()) -->
 
 <!-- #p1 -->
@@ -913,10 +1351,7 @@ Excluding the RMET, if anything, sharpens the contrast: the non-PTP measures coh
 <!-- p2_t1 <-  -->
 <!--   scale_cors |> -->
 <!--   summary(redundant = TRUE) |> -->
-<!--   plot(show_data = "points", -->
-<!--        stars = FALSE) + -->
-<!--   theme_linedraw() + -->
-<!--   ggtitle("") -->
+<!--   plot_cormatrix(fig_cor_scales) -->
 
 <!-- #p2 + coord_fixed(ratio = 1) -->
 
@@ -943,15 +1378,15 @@ Excluding the RMET, if anything, sharpens the contrast: the non-PTP measures coh
 
 <!-- ``` -->
 
-<!-- ```{r fig.height=7, fig.width=6} -->
+<!-- ```{r fig.height=7.32, fig.width=6.27} -->
 
 <!-- p1_t1 + ggtitle("Correlation histogram") + -->
 <!--   p2_t1 + ggtitle("Correlation matrix") +  -->
 <!--   plot_layout(ncol = 1, heights = c(.4, 1)) -->
 
-<!-- ggsave("plots/cor_scales_t1.png",  -->
-<!--        width = 6, -->
-<!--        height = 7, -->
+<!-- ggsave_png_pdf("plots/cor_scales_t1.png", -->
+<!--        width = fig_cor_scales$width, -->
+<!--        height = fig_cor_scales$height, -->
 <!--        dpi = 600) -->
 
 <!-- ``` -->
@@ -986,7 +1421,7 @@ Excluding the RMET, if anything, sharpens the contrast: the non-PTP measures coh
 <!--                      breaks = scales::breaks_pretty(n = 10)) +  -->
 <!--   scale_y_continuous(name = "Frequency",  -->
 <!--                      breaks = scales::breaks_pretty(n = 7)) +  -->
-<!--   theme_linedraw() + -->
+<!--   theme_linedraw(base_size = base_size(fig_cor_subscales)) + -->
 <!--   theme(panel.grid.minor.y = element_blank()) -->
 
 <!-- #p3_t1 -->
@@ -1004,24 +1439,21 @@ Excluding the RMET, if anything, sharpens the contrast: the non-PTP measures coh
 <!--   correlation() %>% -->
 <!--   mutate(across(where(is.numeric), ~ round_half_up(., 2))) |> -->
 <!--   summary(redundant = TRUE) |> -->
-<!--   plot(show_data = "points", -->
-<!--        stars = FALSE) + -->
-<!--   theme_linedraw() + -->
-<!--   ggtitle("") -->
+<!--   plot_cormatrix(fig_cor_subscales) -->
 
 <!-- #p4_t1 -->
 
 <!-- ``` -->
 
-<!-- ```{r fig.height=9, fig.width=7} -->
+<!-- ```{r fig.height=7.75, fig.width=6.03} -->
 
 <!-- p3_t1 + ggtitle("Correlation histogram") + -->
 <!--   p4_t1 + ggtitle("Correlation matrix") +  -->
 <!--   plot_layout(ncol = 1, heights = c(.4, 1)) -->
 
-<!-- ggsave("plots/cor_subscales_t1.png", -->
-<!--        width = 7, -->
-<!--        height = 9, -->
+<!-- ggsave_png_pdf("plots/cor_subscales_t1.png", -->
+<!--        width = fig_cor_subscales$width, -->
+<!--        height = fig_cor_subscales$height, -->
 <!--        dpi = 600) -->
 
 <!-- ``` -->
@@ -1059,13 +1491,13 @@ p5_t1 <-
                      breaks = scales::breaks_pretty(n = 10)) +
   scale_y_continuous(name = "Frequency",
                      breaks = scales::breaks_pretty(n = 7)) +
-  theme_linedraw() +
+  theme_linedraw(base_size = base_size(fig_cor_pt)) +
   theme(panel.grid.minor.y = element_blank())
 
 #p5_t1
 
 # code repeated in order to use the rename, which screws up the table but is needed for the plot
-p6_t1 <- data_sumscores |>
+cormat_pt_t1 <- data_sumscores |>
   filter(timepoint == 1) |>
   # PTP first so it sits at the top-left of the matrix; other measures alphabetical
   select(PTP_sim, PTP_rev, PTP_dbl,
@@ -1076,24 +1508,20 @@ p6_t1 <- data_sumscores |>
   rename_with(~ str_remove(.x, "_total")) |>
   rename_with(~ str_replace(.x, "_", "\n")) |>
   correlation() %>%
-  mutate(across(where(is.numeric), ~ round_half_up(., 2))) |>
-  summary(redundant = TRUE) |>
-  plot(show_data = "points",
-       stars = FALSE) +
-  theme_linedraw() +
-  ggtitle("")
+  #mutate(across(where(is.numeric), ~ round_half_up(., 2))) |>
+  summary(redundant = TRUE)
 
-#p6_t1
+#plot_cormatrix(cormat_pt_t1, fig_cor_pt)
 
 ```
 
-```{r fig.height=9, fig.width=7}
+```{r fig.height=4.3, fig.width=5.02}
 
-p6_t1 + ggtitle("Correlation matrix") 
+plot_cormatrix(cormat_pt_t1, fig_cor_pt, "Correlation matrix")
 
-ggsave("plots/cor_pt_t1.png",
-       width = 7,
-       height = 7,
+ggsave_png_pdf("plots/cor_pt_t1.png",
+       width = fig_cor_pt$width,
+       height = fig_cor_pt$height,
        dpi = 600)
 
 ```
@@ -1136,7 +1564,7 @@ ggsave("plots/cor_pt_t1.png",
 <!--                      breaks = scales::breaks_pretty(n = 10)) +  -->
 <!--   scale_y_continuous(name = "Frequency",  -->
 <!--                      breaks = scales::breaks_pretty(n = 7)) +  -->
-<!--   theme_linedraw() + -->
+<!--   theme_linedraw(base_size = base_size(fig_cor_scales)) + -->
 <!--   theme(panel.grid.minor.y = element_blank()) -->
 
 <!-- #p1_t2 -->
@@ -1144,10 +1572,7 @@ ggsave("plots/cor_pt_t1.png",
 <!-- p2_t2 <-  -->
 <!--   scale_cors |> -->
 <!--   summary(redundant = TRUE) |> -->
-<!--   plot(show_data = "points", -->
-<!--        stars = FALSE) + -->
-<!--   theme_linedraw() + -->
-<!--   ggtitle("") -->
+<!--   plot_cormatrix(fig_cor_scales) -->
 
 <!-- #p2_t2 + coord_fixed(ratio = 1) -->
 
@@ -1174,15 +1599,15 @@ ggsave("plots/cor_pt_t1.png",
 
 <!-- ``` -->
 
-<!-- ```{r fig.height=7, fig.width=6} -->
+<!-- ```{r fig.height=7.32, fig.width=6.27} -->
 
 <!-- p1_t2 + ggtitle("Correlation histogram") + -->
 <!--   p2_t2 + ggtitle("Correlation matrix") +  -->
 <!--   plot_layout(ncol = 1, heights = c(.4, 1)) -->
 
-<!-- ggsave("plots/cor_scales_t2.png",  -->
-<!--        width = 6, -->
-<!--        height = 7, -->
+<!-- ggsave_png_pdf("plots/cor_scales_t2.png", -->
+<!--        width = fig_cor_scales$width, -->
+<!--        height = fig_cor_scales$height, -->
 <!--        dpi = 600) -->
 
 <!-- ``` -->
@@ -1217,7 +1642,7 @@ ggsave("plots/cor_pt_t1.png",
 <!--                      breaks = scales::breaks_pretty(n = 10)) +  -->
 <!--   scale_y_continuous(name = "Frequency",  -->
 <!--                      breaks = scales::breaks_pretty(n = 7)) +  -->
-<!--   theme_linedraw() + -->
+<!--   theme_linedraw(base_size = base_size(fig_cor_subscales)) + -->
 <!--   theme(panel.grid.minor.y = element_blank()) -->
 
 <!-- #p3_t2 -->
@@ -1235,31 +1660,28 @@ ggsave("plots/cor_pt_t1.png",
 <!--   correlation() %>% -->
 <!--   mutate(across(where(is.numeric), ~ round_half_up(., 2))) |> -->
 <!--   summary(redundant = TRUE) |> -->
-<!--   plot(show_data = "points", -->
-<!--        stars = FALSE) + -->
-<!--   theme_linedraw() + -->
-<!--   ggtitle("") -->
+<!--   plot_cormatrix(fig_cor_subscales) -->
 
 <!-- #p4_t2 -->
 
 <!-- ``` -->
 
-<!-- ```{r fig.height=9, fig.width=7} -->
+<!-- ```{r fig.height=7.75, fig.width=6.03} -->
 
 <!-- p3_t2 + ggtitle("Correlation histogram") + -->
 <!--   p4_t2 + ggtitle("Correlation matrix") +  -->
 <!--   plot_layout(ncol = 1, heights = c(.4, 1)) -->
 
-<!-- ggsave("plots/cor_subscales_t2.png",  -->
-<!--        width = 7, -->
-<!--        height = 9, -->
+<!-- ggsave_png_pdf("plots/cor_subscales_t2.png", -->
+<!--        width = fig_cor_subscales$width, -->
+<!--        height = fig_cor_subscales$height, -->
 <!--        dpi = 600) -->
 
 <!-- ``` -->
 
 <!-- ### Both times - scales -->
 
-<!-- ```{r fig.height=6, fig.width=9.35} -->
+<!-- ```{r fig.height=4.02, fig.width=6.27} -->
 
 <!-- p1_t1 + ggtitle("Correlation histogram (T1)") + -->
 <!--   p1_t2 + ggtitle("Correlation matrix (T2)") +  -->
@@ -1267,16 +1689,18 @@ ggsave("plots/cor_pt_t1.png",
 <!--   p2_t2 + ggtitle("Correlation matrix (T2)") +  -->
 <!--   plot_layout(ncol = 2, heights = c(.4, 1), guides = "collect") -->
 
-<!-- ggsave("plots/cor_scales_both.png",  -->
-<!--        width = 9.35, -->
-<!--        height = 6, -->
+<!-- # NB the panels above were built at the scale of the portrait figures; rebuild -->
+<!-- # them with plot_cormatrix(..., fig_cor_both) if this figure is re-enabled -->
+<!-- ggsave_png_pdf("plots/cor_scales_both.png", -->
+<!--        width = fig_cor_both$width, -->
+<!--        height = fig_cor_both$height, -->
 <!--        dpi = 600) -->
 
 <!-- ``` -->
 
 <!-- ### Both times - subscales -->
 
-<!-- ```{r fig.height=9, fig.width=13.2} -->
+<!-- ```{r fig.height=4.27, fig.width=6.27} -->
 
 <!-- p3_t1 + ggtitle("Correlation histogram (T1)") + -->
 <!--   p3_t2 + ggtitle("Correlation matrix (T2)") +  -->
@@ -1284,9 +1708,11 @@ ggsave("plots/cor_pt_t1.png",
 <!--   p4_t2 + ggtitle("Correlation matrix (T2)") +  -->
 <!--   plot_layout(ncol = 2, heights = c(.4, 1), guides = "collect") -->
 
-<!-- ggsave("plots/cor_subscales_both.png",  -->
-<!--        width = 13.2, -->
-<!--        height = 9, -->
+<!-- # NB the panels above were built at the scale of the portrait figures; rebuild -->
+<!-- # them with plot_cormatrix(..., fig_cor_both_sub) if this figure is re-enabled -->
+<!-- ggsave_png_pdf("plots/cor_subscales_both.png", -->
+<!--        width = fig_cor_both_sub$width, -->
+<!--        height = fig_cor_both_sub$height, -->
 <!--        dpi = 600) -->
 
 <!-- ``` -->

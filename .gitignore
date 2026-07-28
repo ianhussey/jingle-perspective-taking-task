@@ -4,3 +4,6 @@ old/*
 *.Rhistory
 /data/identifying information - do not share/*
 /pdfs
+
+# Word lock files
+~$*
